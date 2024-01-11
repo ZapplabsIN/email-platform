@@ -54,6 +54,7 @@ interface WrapParams {
     preheader?: string
     variables: Variables
 }
+
 export const Wrap = ({ html, preheader, variables: { user, context, project } }: WrapParams) => {
     const trackingParams = {
         userId: user.id,
@@ -88,3 +89,13 @@ export const Render = (template: string, { user, event, journey, context }: Vari
 }
 
 export default Render
+
+export const RenderObject = (object: Record<string, any> | undefined, variables: Variables) => {
+    if (!object) return {}
+    return Object.keys(object).reduce((body, key) => {
+        body[key] = typeof object[key] === 'object'
+            ? RenderObject(object[key], variables)
+            : Render(object[key], variables)
+        return body
+    }, {} as Record<string, any>)
+}

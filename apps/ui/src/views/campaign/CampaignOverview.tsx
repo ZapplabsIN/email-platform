@@ -45,8 +45,8 @@ export default function CampaignOverview() {
             <Heading title="Channel" size="h4" />
             <InfoTable rows={{
                 channel: ChannelTag({ channel: campaign.channel }),
-                provider: campaign.provider.name,
-                subscription_group: campaign.subscription.name,
+                provider: campaign.provider?.name,
+                subscription_group: campaign.subscription?.name,
             }} />
 
             <Heading title="Delivery" size="h4" />

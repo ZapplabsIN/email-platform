@@ -150,6 +150,7 @@ export default function TemplateDetail({ template }: TemplateDetailProps) {
     const [campaign, setCampaign] = useContext(CampaignContext)
     const [project] = useContext(ProjectContext)
     const [isEditOpen, setIsEditOpen] = useState(false)
+    const showCodeEditor = type === 'email' || type === 'in_app'
 
     async function handleTemplateSave(params: TemplateUpdateParams) {
         const value = await api.templates.update(project.id, id, params)
@@ -174,13 +175,14 @@ export default function TemplateDetail({ template }: TemplateDetailProps) {
                             text: <TextTable data={data} />,
                             push: <PushTable data={data} />,
                             webhook: <WebhookTable data={data} />,
+                            in_app: <></>,
                         }[type]
                     }
                 </Column>
 
                 <Column fullscreen={true}>
                     <Heading title="Design" size="h4" actions={
-                        type === 'email' && campaign.state !== 'finished' && <LinkButton size="small" variant="secondary" to={`../editor?locale=${template.locale}`}>Edit Design</LinkButton>
+                        showCodeEditor && campaign.state !== 'finished' && <LinkButton size="small" variant="secondary" to={`../editor?locale=${template.locale}`}>Edit Design</LinkButton>
                     } />
                     <Preview template={{ type, data }} />
                 </Column>
@@ -202,6 +204,7 @@ export default function TemplateDetail({ template }: TemplateDetailProps) {
                                 text: <TextForm form={form} />,
                                 push: <PushForm form={form} />,
                                 webhook: <WebhookForm form={form} />,
+                                in_app: <></>,
                             }[type]
                         }
                     </>}
