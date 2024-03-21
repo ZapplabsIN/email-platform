@@ -5,8 +5,6 @@ services:
     platform: linux/x86_64
     environment:
       - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
-    ports:
-      - 3306:3306
     expose:
       - 3306
     volumes:
@@ -21,8 +19,6 @@ services:
     image: redis
     expose:
       - "6379"
-    ports:
-      - 6379:6379
     restart: always
     volumes:
       - redis_data:/data
