@@ -36,6 +36,11 @@ router.get('/login/:driver/callback', async ctx => {
 })
 
 router.post('/login/:driver/callback', async ctx => {
+
+    // print the ctx
+    console.log('AuthController.ts: login driver callback: ')
+    console.log(ctx)
+
     ctx.status = 204
     await validateAuth(ctx)
 })

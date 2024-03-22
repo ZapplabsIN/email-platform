@@ -32,19 +32,36 @@ export default class BasicAuthProvider extends AuthProvider {
 
     async validate(ctx: Context) {
 
+        console.log('BasicAuthProvider.ts: validate: ')
+
         const { email, password } = ctx.request.body
+
+        // Check email and password are provided
+        console.log('email: ' + email)
+        console.log('password ' + password)
+
         if (!email || !password) throw new RequestError(AuthError.MissingCredentials)
+
+        console.log('coming here...')
 
         // Check email and password match
         if (email !== this.config.email || password !== this.config.password) {
             throw new RequestError(AuthError.InvalidCredentials)
         }
 
+        console.log('coming here... 2')
+
         // Find admin, otherwise first time, create
         let admin = await getAdminByEmail(email)
+
+        // print the admin
+        console.log('BasicAuthProvider.ts: validate: admin: ', admin)
+
         if (!admin) {
             admin = await Admin.insertAndFetch({ email, first_name: 'Admin' })
         }
+
+        console.log('coming here... 3')
 
         // Process the login
         await this.login({ email, domain: 'local' }, ctx)

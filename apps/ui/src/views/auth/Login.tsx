@@ -37,6 +37,11 @@ export default function Login() {
 
     const handleLogin = (method: string) => {
         return async ({ email, password }: LoginParams) => {
+
+            // print the email, password and method
+            console.log('Login.tsx: handleLogin: ')
+            console.log({ email, password, method })
+
             if (password && method === 'basic') {
                 await api.auth.basicAuth(email, password, searchParams.get('r') ?? '/')
             } else if (method === 'email') {

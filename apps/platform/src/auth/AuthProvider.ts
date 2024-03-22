@@ -36,8 +36,15 @@ export default abstract class AuthProvider {
 
     async login({ domain, ...params }: AuthAdminParams, ctx: AuthContext, redirect?: string): Promise<OAuthResponse> {
 
+        // print params
+        console.log('AuthProvider.ts: login: params: ', params)
+
         // Check for existing, otherwise create one
         let admin = await getAdminByEmail(params.email)
+
+        // print the admin
+        console.log('AuthProvider.ts: login: admin: ', admin)
+
         if (!admin) {
             const organization = await this.loadAuthOrganization(ctx, domain)
             admin = await Admin.insertAndFetch({
@@ -46,16 +53,31 @@ export default abstract class AuthProvider {
             })
         }
 
+        console.log('coming here before generateOauth...')
+
         return await this.generateOauth(admin, ctx, redirect)
     }
 
     private async generateOauth(admin: Admin, ctx?: AuthContext, redirect?: string) {
         const oauth = await generateAccessToken(admin, ctx)
 
+        // print the oauth
+        console.log('AuthProvider.ts: generateOauth: oauth: ', oauth)
+
         if (ctx) {
             setTokenCookies(ctx, oauth)
+
+            // print the redirect and baseUrl
+            console.log('AuthProvider.ts: generateOauth: redirect: ', redirect)
+            console.log('AuthProvider.ts: generateOauth: baseUrl: ', App.main.env.baseUrl)
+
+            // Redirect to the home page or the provided redirect
             ctx.redirect(redirect || App.main.env.baseUrl)
         }
+
+        // print the oauth
+        console.log('AuthProvider.ts: generateOauth: oauth: ', oauth)
+
         return oauth
     }
 
