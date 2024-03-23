@@ -2,5 +2,8 @@
     "eslint.workingDirectories": [
         "./apps/ui", 
         "./apps/platform"
+    ],
+    "cSpell.words": [
+        "edesylabs"
     ]
 }
