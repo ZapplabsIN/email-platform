@@ -112,16 +112,14 @@ export const createRouter = ({
             },
             {
                 path: 'organization',
-                loader: async () => {
-                    return await api.organizations.get()
-                },
+                loader: async () => await api.organizations.get(),
                 element: (
                     <StatefulLoaderContextProvider context={OrganizationContext}>
                         <Sidebar
                             links={orgSidebarLinks([
                                 {
                                     key: 'projects',
-                                    to: './projects',
+                                    to: 'projects',
                                     children: 'Projects',
                                     icon: <ProjectIcon />,
                                 },
