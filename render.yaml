@@ -1,8 +1,8 @@
 services:
   - type: web
-    name: parcelvoy
+    name: email-platform
     env: docker
-    repo: https://github.com/parcelvoy/platform.git
+    repo: https://github.com/edesylabs/email-platform.git
     dockerfilePath: ./docker/Dockerfile.render
     dockerContext: .
     autoDeploy: false
