@@ -1,19 +1,17 @@
-import { add, addDays, addHours, addMinutes, isFuture, isPast, parse } from 'date-fns'
+import { add, addDays, addHours, addMinutes, isEqual, isFuture, isPast, parse } from 'date-fns'
 import Model from '../core/Model'
-import { User } from '../users/User'
-import { getCampaign, getCampaignSend, sendCampaignJob } from '../campaigns/CampaignService'
+import { getCampaign, getCampaignSend, triggerCampaignSend } from '../campaigns/CampaignService'
 import { crossTimezoneCopy, random, snakeCase, uuid } from '../utilities'
 import { Database } from '../config/database'
 import { compileTemplate } from '../render'
 import { logger } from '../config/logger'
 import { utcToZonedTime, zonedTimeToUtc } from 'date-fns-tz'
-import { JourneyState } from './JourneyService'
 import Rule from '../rules/Rule'
 import { check } from '../rules/RuleEngine'
 import App from '../app'
 import { RRule } from 'rrule'
-import { CampaignSend } from '../campaigns/Campaign'
-import { createEvent } from '../users/UserEventRepository'
+import { JourneyState } from './JourneyState'
+import { EventPostJob, UserPatchJob } from '../jobs'
 
 export class JourneyUserStep extends Model {
     user_id!: number
@@ -49,6 +47,7 @@ export class JourneyStepChild extends Model {
     step_id!: number
     child_id!: number
     data?: Record<string, unknown>
+    path?: string
     priority!: number
 
     static tableName = 'journey_step_child'
@@ -128,6 +127,16 @@ export class JourneyEntrance extends JourneyStep {
 
         if (this.schedule) {
             try {
+                const rule = RRule.fromString(this.schedule)
+
+                // If there is no frequency, only run once
+                if (!rule.options.freq) {
+                    if (isEqual(rule.options.dtstart, after)) {
+                        return null
+                    }
+                    return rule.options.dtstart
+                }
+
                 return RRule.fromString(this.schedule).after(after)
             } catch (err) {
                 App.main.error.notify(err as Error, {
@@ -265,24 +274,21 @@ export class JourneyAction extends JourneyStep {
 
         // defer job construction so that we have the journey_user_step.id value
         state.job(async () => {
-            let send_id = await getCampaignSend(campaign.id, state.user.id, `${userStep.id}`).then(s => s?.id)
+            const send_id = await getCampaignSend(campaign.id, state.user.id, `${userStep.id}`).then(s => s?.id)
 
-            if (!send_id) {
-                send_id = await CampaignSend.insert({
-                    campaign_id: campaign.id,
-                    user_id: state.user.id,
-                    state: 'pending',
-                    send_at: new Date(),
-                    reference_id: `${userStep.id}`,
-                })
-            }
-
-            return sendCampaignJob({
+            const send = triggerCampaignSend({
                 campaign,
                 user: state.user,
                 send_id,
                 reference_id: `${userStep.id}`,
+                reference_type: 'journey',
             })
+
+            if (!send) {
+                userStep.type = 'error'
+            }
+
+            return send
         })
     }
 }
@@ -302,9 +308,11 @@ export class JourneyGate extends JourneyStep {
         if (!this.rule) return
 
         const children = state.childrenOf(this.id)
-        if (!children.length) return
+        const passed = children.find(c => c.path === 'yes')
+        const failed = children.find(c => c.path === 'no')
 
-        const [passed, failed] = children
+        if (!passed && !failed) return
+
         const events = await state.events()
 
         const params = {
@@ -455,7 +463,6 @@ export class JourneyBalancer extends JourneyStep {
             hour: 60 * 60 * 1000,
             day: 24 * 60 * 60 * 1000,
         }
-        console.log(intervals[this.rate_interval], this.rate_interval)
         return intervals[this.rate_interval]
     }
 }
@@ -484,14 +491,18 @@ export class JourneyUpdate extends JourneyStep {
                         ...state.user.data,
                         ...value,
                     }
-                    await User.update(q => q.where('id', state.user.id), {
-                        data: state.user.data,
-                    })
+                    await UserPatchJob.from({
+                        project_id: state.user.project_id,
+                        user: {
+                            external_id: state.user.external_id,
+                            data: value,
+                        },
+                    }).queue()
                 }
             } catch (err: any) {
                 logger.warn({
                     error: err.message,
-                }, 'Error while updating user')
+                }, 'journey:user:error')
                 userStep.type = 'error'
                 return
             }
@@ -529,10 +540,16 @@ export class JourneyEvent extends JourneyStep {
             value = {}
         }
 
-        await createEvent(state.user, {
-            name: this.event_name,
-            data: value,
-        })
+        await EventPostJob.from({
+            project_id: state.user.project_id,
+            event: {
+                name: this.event_name,
+                external_id: state.user.external_id,
+                anonymous_id: state.user.anonymous_id,
+                data: value,
+            },
+        }).queue()
+
         userStep.type = 'completed'
     }
 }
@@ -561,6 +578,7 @@ interface JourneyStepMapItem {
     y: number
     children?: Array<{
         external_id: string
+        path?: string
         data?: Record<string, unknown>
     }>
 }
@@ -586,12 +604,13 @@ export async function toJourneyStepMap(steps: JourneyStep[], children: JourneySt
             data_key: step.data_key,
             x: step.x ?? 0,
             y: step.y ?? 0,
-            children: children.reduce<JourneyStepMap[string]['children']>((a, { step_id, child_id, data }) => {
+            children: children.reduce<JourneyStepMap[string]['children']>((a, { step_id, child_id, path, data }) => {
                 if (step_id === step.id) {
                     const child = steps.find(s => s.id === child_id)
                     if (child) {
                         a!.push({
                             external_id: child.external_id,
+                            path,
                             data,
                         })
                     }

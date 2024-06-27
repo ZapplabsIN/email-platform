@@ -146,7 +146,7 @@ const api = {
         },
     },
 
-    admins: createEntityPath<Admin>('/admin/admins'),
+    admins: createEntityPath<Admin>('/admin/organizations/admins'),
 
     projects: {
         ...createEntityPath<Project>('/admin/projects'),
@@ -155,6 +155,9 @@ const api = {
             .then(r => r.data),
         pathSuggestions: async (projectId: number | string) => await client
             .get<RuleSuggestions>(`${projectUrl(projectId)}/data/paths`)
+            .then(r => r.data),
+        rebuildPathSuggestions: async (projectId: number | string) => await client
+            .post(`${projectUrl(projectId)}/data/paths/sync`)
             .then(r => r.data),
     },
 
@@ -314,6 +317,9 @@ const api = {
             .then(r => r.data),
         jobPerformance: async (job: string) => await client
             .get<Metric[]>(`/admin/organizations/performance/jobs/${job}`)
+            .then(r => r.data),
+        failed: async () => await client
+            .get<any>('/admin/organizations/performance/failed')
             .then(r => r.data),
     },
 

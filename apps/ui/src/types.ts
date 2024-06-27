@@ -93,6 +93,7 @@ export interface SearchParams {
     limit: number
     sort?: string
     direction?: string
+    filter?: Record<string, any>
     q?: string
     tag?: string[]
     id?: Array<number | string>
@@ -112,6 +113,14 @@ export interface AuthMethod {
     name: string
 }
 
+export const organizationRoles = [
+    'member',
+    'admin',
+    'owner',
+] as const
+
+export type OrganizationRole = (typeof organizationRoles)[number]
+
 export interface Admin {
     id: number
     organization_id: number
@@ -119,7 +128,7 @@ export interface Admin {
     last_name: string
     email: string
     image_url: string
-    role: 'member' | 'admin' | 'owner'
+    role: OrganizationRole
 }
 
 export interface Organization {
@@ -160,7 +169,8 @@ export interface Project {
     description?: string
     locale: string
     timezone: string
-    text_opt_out_message: string
+    text_opt_out_message?: string
+    text_help_message?: string
     link_wrap: boolean
     created_at: string
     updated_at: string
@@ -194,6 +204,7 @@ export interface User {
     locale?: string
     data: Record<string, any>
     devices?: Device[]
+    created_at?: Date
 }
 
 export interface Device {
@@ -265,6 +276,7 @@ export type JourneyStepParams = Omit<JourneyStep, 'id'>
 
 interface JourneyStepMapChild<E = any> {
     external_id: string
+    path?: string
     data?: E
 }
 
@@ -306,15 +318,14 @@ export interface JourneyStepType<T = any, E = any> {
     newEdgeData?: () => Promise<E>
     Edit?: ComponentType<JourneyStepTypeEditProps<T>>
     EditEdge?: ComponentType<JourneyStepTypeEdgeProps<T, E>>
-    sources?:
-    | 'single' // single child (default)
-    | 'multi' // multiple children, one handle (unordered)
-    | string[] // enumerated handles (ordered)
+    sources?: string[]
+    multiChildSources?: boolean
     hasDataKey?: boolean
 }
 
 export interface JourneyUserStep {
     id: number
+    entrance_id: number
     type: string
     delay_until?: string
     created_at: string

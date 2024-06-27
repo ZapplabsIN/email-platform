@@ -3,7 +3,7 @@ import { JSONSchemaType, validate } from '../core/validate'
 import App from '../app'
 import { Context } from 'koa'
 import { JwtAdmin } from '../auth/AuthMiddleware'
-import { deleteOrganization, getOrganization, organizationIntegrations, requireOrganizationRole, updateOrganization } from './OrganizationService'
+import { deleteOrganization, getOrganization, organizationIntegrations, organizationRoleMiddleware, requireOrganizationRole, updateOrganization } from './OrganizationService'
 import Organization, { OrganizationParams } from './Organization'
 import { jobs } from '../config/queue'
 
@@ -23,6 +23,8 @@ router.get('/', async ctx => {
     ctx.body = ctx.state.organization
 })
 
+router.use(organizationRoleMiddleware('admin'))
+
 router.get('/performance/queue', async ctx => {
     ctx.body = await App.main.queue.metrics()
 })
@@ -33,6 +35,10 @@ router.get('/performance/jobs', async ctx => {
 
 router.get('/performance/jobs/:job', async ctx => {
     ctx.body = await App.main.stats.list(ctx.params.job)
+})
+
+router.get('/performance/failed', async ctx => {
+    ctx.body = await App.main.queue.failed()
 })
 
 router.get('/integrations', async ctx => {

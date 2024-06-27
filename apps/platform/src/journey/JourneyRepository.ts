@@ -61,7 +61,7 @@ export const getJourney = async (id: number, projectId: number): Promise<Journey
 }
 
 export const updateJourney = async (id: number, { tags, ...params }: UpdateJourneyParams, db = App.main.db): Promise<Journey> => {
-    return db.transaction(async trx => {
+    const journey = await db.transaction(async trx => {
         const journey = await Journey.updateAndFetch(id, params, trx)
         if (tags) {
             await setTags({
@@ -73,6 +73,8 @@ export const updateJourney = async (id: number, { tags, ...params }: UpdateJourn
         }
         return journey
     })
+
+    return await getJourney(id, journey.project_id)
 }
 
 export const deleteJourney = async (id: number, projectId: number): Promise<void> => {
@@ -122,12 +124,10 @@ export const setJourneyStepMap = async (journeyId: number, stepMap: JourneyStepM
                 steps.push(step = new JourneyStep())
             }
             let next_scheduled_at: null | Date = null
-            if (type === JourneyEntrance.type) {
-                if (data.trigger === 'schedule') {
-                    next_scheduled_at = JourneyEntrance.fromJson({ data }).nextDate(now)
-                } else {
-                    next_scheduled_at = null
-                }
+            if (type === JourneyEntrance.type
+                && data.trigger === 'schedule'
+                && step.data?.schedule !== data.schedule) {
+                next_scheduled_at = JourneyEntrance.fromJson({ data }).nextDate(now)
             }
             const fields = { data, data_key, name, next_scheduled_at, x, y }
             step.parseJson(step.id
@@ -163,7 +163,7 @@ export const setJourneyStepMap = async (journeyId: number, stepMap: JourneyStepM
             const childIds: number[] = []
 
             let ci = 0
-            for (const { external_id, data = {} } of list) {
+            for (const { external_id, path, data = {} } of list) {
                 const child = steps.find(s => s.external_id === external_id)
                 if (!child) continue
                 const idx = children.findIndex(sc => sc.step_id === step.id && sc.child_id === child.id)
@@ -173,12 +173,14 @@ export const setJourneyStepMap = async (journeyId: number, stepMap: JourneyStepM
                         step_id: step.id,
                         child_id: child.id,
                         data,
+                        path,
                         priority: ci,
                     }, trx))
                 } else {
                     stepChild = children[idx]
                     children[idx] = await JourneyStepChild.updateAndFetch(stepChild.id, {
                         data,
+                        path,
                         priority: ci,
                     }, trx)
                 }
@@ -244,6 +246,7 @@ export const pagedEntrancesByUser = async (userId: number, params: PageParams) =
             ...r,
             results: r.results.map(s => ({
                 id: s.id,
+                entrance_id: s.id,
                 journey: journeys.get(s.journey_id),
                 created_at: s.created_at,
                 updated_at: s.updated_at,
