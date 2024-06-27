@@ -140,7 +140,7 @@ export const updateList = async (list: List, { tags, rule, published, ...params 
         await ListPopulateJob.from(list.id, list.project_id).queue()
     }
 
-    return list
+    return await getList(list.id, list.project_id)
 }
 
 export const archiveList = async (id: number, projectId: number) => {
@@ -317,11 +317,21 @@ export const listsForRule = async (ruleUuids: string[], projectId: number): Prom
     ) as DynamicList[]
 }
 
-export const listUserCount = async (listId: number, since?: Date): Promise<number> => {
+interface CountRange {
+    sinceDate?: Date
+    sinceId?: number
+    untilId?: number
+}
+
+export const listUserCount = async (listId: number, since?: CountRange): Promise<number> => {
     return await UserList.count(qb => {
         qb.where('list_id', listId)
-        if (since) {
-            qb.where('created_at', '>=', since)
+        if (since && since.sinceDate) {
+            qb.where('created_at', '>=', since.sinceDate)
+            if (since.sinceId && since.untilId) {
+                qb.where('id', '>', since.sinceId)
+                    .where('id', '<=', since.untilId)
+            }
         }
         return qb
     })

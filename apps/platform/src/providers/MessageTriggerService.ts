@@ -4,7 +4,7 @@ import Campaign, { CampaignSend } from '../campaigns/Campaign'
 import { updateSendState } from '../campaigns/CampaignService'
 import { Channel } from '../config/channels'
 import { RateLimitResponse } from '../config/rateLimit'
-import { acquireLock } from '../config/scheduler'
+import { acquireLock } from '../core/Lock'
 import Project from '../projects/Project'
 import { EncodedJob } from '../queue'
 import { RenderContext } from '../render'
@@ -42,11 +42,11 @@ export async function loadSendJob<T extends TemplateType>({ campaign_id, user_id
     // sent, abort this job to prevent duplicate sends
     if (send && send.hasCompleted) return
 
-    // Fetch campaign and templates
+    // Fetch campaign
     const campaign = await Campaign.find(campaign_id)
     if (!campaign) return
 
-    // Get all templates then filter for users best option
+    // Get all templates
     const templates = await Template.all(
         qb => qb.where('campaign_id', campaign_id),
     )
@@ -65,6 +65,7 @@ export async function loadSendJob<T extends TemplateType>({ campaign_id, user_id
         return
     }
 
+    // Create context object from campaign details
     const context = {
         campaign_id: campaign.id,
         campaign_name: campaign.name,
@@ -81,7 +82,8 @@ export async function loadSendJob<T extends TemplateType>({ campaign_id, user_id
         ? await loadUserStepDataMap(reference_id)
         : {}
 
-    return {
+    // Create the hydrated message object
+    const response = {
         campaign,
         context,
         event,
@@ -90,6 +92,15 @@ export async function loadSendJob<T extends TemplateType>({ campaign_id, user_id
         project,
         user,
     }
+
+    // Check that the template is valid and capable of being sent
+    const [isValid, error] = template.map().validate()
+    if (!isValid) {
+        await failSend(response, error, () => false)
+        return
+    }
+
+    return response
 }
 
 export const messageLock = (campaign: Campaign, user: User) => `parcelvoy:send:${campaign.id}:${user.id}`
@@ -145,34 +156,29 @@ export const throttleSend = async (channel: Channel, points = 1): Promise<RateLi
     )
 }
 
-export const notifyJourney = async (reference_id: string, response?: any) => {
+export const failSend = async ({ campaign, user, context }: MessageTriggerHydrated<TemplateType>, error?: Error, shouldNotify = (_: any) => true) => {
 
-    const referenceId = parseInt(reference_id, 10)
-    // save response into user step
-    if (response) {
-        await JourneyUserStep.update(q => q.where('id', referenceId), {
-            data: {
-                response,
-            },
-        })
-    }
-
-    // trigger processing of this journey entrance
-    await JourneyProcessJob.from({ entrance_id: referenceId }).queue()
-}
-
-export const failSend = async ({ campaign, user, context }: MessageTriggerHydrated<TemplateType>, error: Error, shouldNotify = (_: any) => true) => {
+    // Update send record
     await updateSendState({
         campaign,
         user,
         reference_id: context.reference_id,
         state: 'failed',
     })
+
+    // Create an event on the failure
     await createEvent(user, {
         name: campaign.eventName('failed'),
-        data: { ...context },
+        data: { ...context, error },
     }, true, ({ result, ...data }) => data)
-    if (shouldNotify(error)) App.main.error.notify(error)
+
+    // If this send is part of a journey, notify the journey
+    if (context.reference_id && context.reference_type === 'journey') {
+        await notifyJourney(context.reference_id)
+    }
+
+    // Notify of the error if it's a critical one
+    if (error && shouldNotify(error)) App.main.error.notify(error)
 }
 
 export const finalizeSend = async (data: MessageTriggerHydrated<TemplateType>, result: any) => {
@@ -185,13 +191,31 @@ export const finalizeSend = async (data: MessageTriggerHydrated<TemplateType>, r
         reference_id: context.reference_id,
     })
 
-    // Create an event on the user about the email
+    // Create an event on the user about the send
     await createEvent(user, {
         name: campaign.eventName('sent'),
         data: { ...context, result },
     }, true, ({ result, ...data }) => data)
 
-    if (context.reference_id) {
-        await notifyJourney(context.reference_id)
+    // If this send is part of a journey, notify the journey
+    if (context.reference_id && context.reference_type === 'journey') {
+        await notifyJourney(context.reference_id, campaign.channel === 'webhook' ? result : undefined)
     }
+}
+
+export const notifyJourney = async (reference_id: string, response?: any) => {
+
+    const referenceId = parseInt(reference_id, 10)
+
+    // Save response into user step
+    if (response) {
+        await JourneyUserStep.update(q => q.where('id', referenceId), {
+            data: {
+                response,
+            },
+        })
+    }
+
+    // Trigger processing of this journey entrance
+    await JourneyProcessJob.from({ entrance_id: referenceId }).queue()
 }

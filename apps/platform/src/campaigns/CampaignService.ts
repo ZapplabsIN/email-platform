@@ -4,14 +4,14 @@ import TextJob from '../providers/text/TextJob'
 import EmailJob from '../providers/email/EmailJob'
 import { User } from '../users/User'
 import { UserEvent } from '../users/UserEvent'
-import Campaign, { CampaignCreateParams, CampaignDelivery, CampaignParams, CampaignProgress, CampaignSend, CampaignSendParams, CampaignSendState, SentCampaign } from './Campaign'
+import Campaign, { CampaignCreateParams, CampaignDelivery, CampaignParams, CampaignProgress, CampaignSend, CampaignSendParams, CampaignSendReferenceType, CampaignSendState, SentCampaign } from './Campaign'
 import List, { UserList } from '../lists/List'
 import Subscription, { SubscriptionState, UserSubscription } from '../subscriptions/Subscription'
 import { RequestError } from '../core/errors'
 import { PageParams } from '../core/searchParams'
 import { allLists } from '../lists/ListService'
 import { allTemplates, duplicateTemplate, screenshotHtml, templateInUserLocale, validateTemplates } from '../render/TemplateService'
-import { getSubscription } from '../subscriptions/SubscriptionService'
+import { getSubscription, getUserSubscriptionState } from '../subscriptions/SubscriptionService'
 import { chunk, crossTimezoneCopy, pick, shallowEqual } from '../utilities'
 import { getProvider } from '../providers/ProviderRepository'
 import { createTagSubquery, getTags, setTags } from '../tags/TagService'
@@ -28,6 +28,9 @@ export const pagedCampaigns = async (params: PageParams, projectId: number) => {
         b => {
             b.where('project_id', projectId)
                 .whereNull('deleted_at')
+            if (params.filter?.type) {
+                b.where('type', params.filter.type)
+            }
             params.tag?.length && b.whereIn('id', createTagSubquery(Campaign, projectId, params.tag))
             return b
         },
@@ -173,12 +176,39 @@ export const getCampaignUsers = async (id: number, params: PageParams, projectId
     )
 }
 
+export const triggerCampaignSend = async ({ campaign, user, event, send_id, reference_type, reference_id }: SendCampaign) => {
+    const userId = user instanceof User ? user.id : user
+    const eventId = event instanceof UserEvent ? event?.id : event
+
+    const subscriptionState = await getUserSubscriptionState(userId, campaign.subscription_id)
+    if (subscriptionState === SubscriptionState.unsubscribed) return
+
+    const reference = { reference_id, reference_type }
+    if (!send_id) {
+        send_id = await CampaignSend.insert({
+            campaign_id: campaign.id,
+            user_id: userId,
+            state: 'pending',
+            send_at: new Date(),
+            ...reference,
+        })
+    }
+
+    return sendCampaignJob({
+        campaign,
+        user: userId,
+        event: eventId,
+        send_id,
+        ...reference,
+    })
+}
+
 interface SendCampaign {
     campaign: Campaign
     user: User | number
     event?: UserEvent | number
     send_id?: number
-    reference_type?: string
+    reference_type?: CampaignSendReferenceType
     reference_id?: string
 }
 
@@ -261,7 +291,7 @@ export const generateSendList = async (campaign: SentCampaign) => {
     await chunk<CampaignSendParams>(query, 100, async (items) => {
         await CampaignSend.query()
             .insert(items)
-            .onConflict(['user_id', 'list_id', 'reference_id'])
+            .onConflict(['campaign_id', 'user_id', 'reference_id'])
             .merge(['state', 'send_at'])
     }, ({ user_id, timezone }: { user_id: number, timezone: string }) => ({
         user_id,
@@ -350,7 +380,7 @@ export const abortCampaign = async (campaign: Campaign) => {
 export const duplicateCampaign = async (campaign: Campaign) => {
     const params: Partial<Campaign> = pick(campaign, ['project_id', 'list_ids', 'exclusion_list_ids', 'provider_id', 'subscription_id', 'channel', 'name', 'type'])
     params.name = `Copy of ${params.name}`
-    params.state = 'draft'
+    params.state = campaign.type === 'blast' ? 'draft' : 'running'
     const cloneId = await Campaign.insert(params)
     for (const template of campaign.templates) {
         await duplicateTemplate(template, cloneId)

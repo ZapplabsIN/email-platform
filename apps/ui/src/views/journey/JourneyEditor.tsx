@@ -49,6 +49,7 @@ import TextInput from '../../ui/form/TextInput'
 import { SearchTable } from '../../ui'
 import { useSearchTableState } from '../../ui/SearchTable'
 import { typeVariants } from './EntranceDetails'
+import { useTranslation } from 'react-i18next'
 
 const getStepType = (type: string) => (type ? journeySteps[type as keyof typeof journeySteps] as JourneyStepType : null) ?? null
 
@@ -75,6 +76,7 @@ interface StepUsersProps {
 
 function StepUsers({ entrance, stepId }: StepUsersProps) {
 
+    const { t } = useTranslation()
     const [{ id: projectId }] = useContext(ProjectContext)
     const [{ id: journeyId }] = useContext(JourneyContext)
 
@@ -89,22 +91,27 @@ function StepUsers({ entrance, stepId }: StepUsersProps) {
                 columns={[
                     {
                         key: 'name',
+                        title: t('name'),
                         cell: ({ item }) => item.user!.full_name ?? '-',
                     },
                     {
                         key: 'external_id',
+                        title: t('external_id'),
                         cell: ({ item }) => item.user?.external_id ?? '-',
                     },
                     {
                         key: 'email',
+                        title: t('email'),
                         cell: ({ item }) => item.user?.email ?? '-',
                     },
                     {
                         key: 'phone',
+                        title: t('phone'),
                         cell: ({ item }) => item.user?.phone ?? '-',
                     },
                     {
                         key: 'type',
+                        title: t('type'),
                         cell: ({ item }) => (
                             <Tag variant={typeVariants[item.type]}>
                                 {camelToTitle(item.type)}
@@ -113,12 +120,12 @@ function StepUsers({ entrance, stepId }: StepUsersProps) {
                     },
                     {
                         key: 'created_at',
-                        title: 'Step Date',
+                        title: t('step_date'),
                         cell: ({ item }) => item.created_at,
                     },
                     {
                         key: 'delay_until',
-                        title: 'Delay Until',
+                        title: t('delay_until'),
                         cell: ({ item }) => item.delay_until,
                     },
                 ]}
@@ -143,6 +150,7 @@ function JourneyStepNode({
 
     if (!stats) stats = {}
 
+    const { t } = useTranslation()
     const [project] = useContext(ProjectContext)
     const [journey] = useContext(JourneyContext)
     const { getNode, getEdges } = useReactFlow()
@@ -151,7 +159,7 @@ function JourneyStepNode({
 
     const validateConnection = useCallback((conn: Connection) => {
         if (!type) return false
-        if (type.sources === 'multi') return true
+        if (type.multiChildSources) return true
         const sourceNode = conn.source && getNode(conn.source)
         if (!sourceNode) return true
         const existing = getConnectedEdges([sourceNode], getEdges())
@@ -184,7 +192,7 @@ function JourneyStepNode({
                     <span className={clsx('step-header-icon', stepCategoryColors[type.category])}>
                         {type.icon}
                     </span>
-                    <h4 className="step-header-title">{name || type.name}</h4>
+                    <h4 className="step-header-title">{name || t(type.name)}</h4>
                     <div className="step-header-stats">
                         <span className="stat">
                             {(stats.completed ?? 0).toLocaleString()}
@@ -232,25 +240,25 @@ function JourneyStepNode({
                     Array.isArray(type.sources)
                         ? type.sources
                         : ['']
-                ).map((label, index, arr) => {
+                ).map((key, index, arr) => {
                     const left = (((index + 1) / (arr.length + 1)) * 100) + '%'
                     return (
-                        <Fragment key={label}>
+                        <Fragment key={key}>
                             {
-                                label && (
+                                key && (
                                     <span
                                         className="step-handle-label"
                                         style={{
                                             left,
                                         }}
                                     >
-                                        {label}
+                                        {key}
                                     </span>
                                 )
                             }
                             <Handle
                                 type="source"
-                                position={Position.Bottom} id={index + '-s-' + id}
+                                position={Position.Bottom} id={key + '-s-' + id}
                                 isValidConnection={validateConnection}
                                 style={{
                                     left,
@@ -347,21 +355,19 @@ interface CreateEdgeParams {
     sourceId: string
     targetId: string
     data: any
-    index: number
-    stepType: JourneyStepType<any, any> | null
+    path?: string
 }
 
 function createEdge({
     data,
-    index,
     sourceId,
-    stepType,
     targetId,
+    path,
 }: CreateEdgeParams): Edge {
     return {
         id: 'e-' + sourceId + '__' + targetId,
         source: sourceId,
-        sourceHandle: (Array.isArray(stepType?.sources) ? index : 0) + '-s-' + sourceId,
+        sourceHandle: (path ?? '') + '-s-' + sourceId,
         target: targetId,
         targetHandle: 't-' + targetId,
         data,
@@ -395,20 +401,18 @@ function stepsToNodes(stepMap: JourneyStepMap) {
                 stepId,
             },
         })
-        const stepType = getStepType(type)
-        children?.forEach(({ external_id, data }, index) => edges.push(createEdge({
+        children?.forEach(({ external_id, path, data }) => edges.push(createEdge({
             sourceId: id,
             targetId: external_id,
-            index,
             data,
-            stepType,
+            path,
         })))
     }
 
     return { nodes, edges }
 }
 
-const getSourceIndex = (handleId: string) => parseInt(handleId.substring(0, handleId.indexOf('-s-')), 10)
+const getSourcePath = (handleId: string) => handleId.substring(0, handleId.indexOf('-s-'))
 
 function nodesToSteps(nodes: Node[], edges: Edge[]) {
     return nodes.reduce<JourneyStepMap>((a, {
@@ -433,9 +437,9 @@ function nodesToSteps(nodes: Node[], edges: Edge[]) {
             y,
             children: edges
                 .filter(e => e.source === id)
-                .sort((x, y) => getSourceIndex(x.sourceHandle!) - getSourceIndex(y.sourceHandle!))
-                .map(({ data = {}, target }) => ({
+                .map(({ data = {}, sourceHandle, target }) => ({
                     external_id: target,
+                    path: getSourcePath(sourceHandle!),
                     data,
                 })),
         }
@@ -464,21 +468,18 @@ function cloneNodes(edges: Edge[], targets: Node[]) {
     }
     const edgeCopies = getConnectedEdges(targets, edges)
         .filter(edge => edge.source in mapping && edge.target in mapping)
-        .map((edge, index) => createEdge({
+        .map((edge) => createEdge({
             sourceId: mapping[edge.source],
             targetId: mapping[edge.target],
-            index,
             data: edge.data ?? {},
-            stepType: targets
-                .filter(n => n.id === edge.source)
-                .map(n => getStepType(n.data.type))
-                .at(0)!,
+            path: getSourcePath(edge.sourceHandle!),
         }))
     return { nodeCopies, edgeCopies }
 }
 
 export default function JourneyEditor() {
     const navigate = useNavigate()
+    const { t } = useTranslation()
     const [flowInstance, setFlowInstance] = useState<null | ReactFlowInstance>(null)
     const wrapper = useRef<HTMLDivElement>(null)
 
@@ -518,7 +519,7 @@ export default function JourneyEditor() {
             setNodes(refreshed.nodes)
             setEdges(refreshed.edges)
 
-            toast.success('Saved!')
+            toast.success(t('journey_saved'))
         } catch (error: any) {
             toast.error(`Unable to save: ${error}`)
         } finally {
@@ -617,7 +618,7 @@ export default function JourneyEditor() {
                         <span className={clsx('step-header-icon', stepCategoryColors[type.category])}>
                             {type.icon}
                         </span>
-                        <h4 className="step-header-title">{type.name}</h4>
+                        <h4 className="step-header-title">{t(type.name)}</h4>
                         <div
                             className="step-header-stats"
                             role={editNode.data.stepId ? 'button' : undefined}
@@ -653,7 +654,7 @@ export default function JourneyEditor() {
                     </div>
                     <div className="journey-options-edit">
                         <TextInput
-                            label="Name"
+                            label={t('name')}
                             name="name"
                             value={editNode.data.name ?? ''}
                             onChange={name => setNodes(nds => nds.map(n => n.id === editNode.id ? { ...n, data: { ...n.data, name } } : n))}
@@ -661,8 +662,8 @@ export default function JourneyEditor() {
                         {
                             type.hasDataKey && (
                                 <TextInput
-                                    label="Data Key"
-                                    subtitle="Makes data stored at this step available in user update and campaign templates."
+                                    label={t('data_key')}
+                                    subtitle={t('data_key_description')}
                                     name="data_key"
                                     value={editNode.data.data_key}
                                     onChange={data_key => setNodes(nds => nds.map(n => n.id === editNode.id ? { ...n, data: { ...n.data, data_key } } : n))}
@@ -704,20 +705,20 @@ export default function JourneyEditor() {
                     <Tag
                         variant={journey.published ? 'success' : 'plain'}
                         size="large">
-                        {journey.published ? 'Published' : 'Draft'}
+                        {journey.published ? t('published') : t('draft')}
                     </Tag>
                     <Button
                         variant="secondary"
                         onClick={() => setEditOpen(true)}
                     >
-                        {'Edit Details'}
+                        {t('edit_details')}
                     </Button>
                     <Button
                         onClick={saveSteps}
                         isLoading={saving}
                         variant="primary"
                     >
-                        {'Save'}
+                        {t('save')}
                     </Button>
                 </>
             }
@@ -808,8 +809,8 @@ export default function JourneyEditor() {
                                             <span className={clsx('component-handle', type.category)}>
                                                 {type.icon}
                                             </span>
-                                            <div className="component-title">{type.name}</div>
-                                            <div className="component-desc">{type.description}</div>
+                                            <div className="component-title">{t(type.name)}</div>
+                                            <div className="component-desc">{t(type.description)}</div>
                                         </div>
                                     ))
                                 }
@@ -821,7 +822,7 @@ export default function JourneyEditor() {
             <Modal
                 open={editOpen}
                 onClose={setEditOpen}
-                title="Edit Journey Details"
+                title={t('edit_journey_details')}
             >
                 <JourneyForm
                     journey={journey}
@@ -834,7 +835,7 @@ export default function JourneyEditor() {
             <Modal
                 open={!!viewUsersStep}
                 onClose={() => setViewUsersStep(null)}
-                title="Users"
+                title={t('users')}
                 size="large"
             >
                 {

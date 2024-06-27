@@ -3,11 +3,12 @@ import { ClientAliasParams, ClientIdentity } from '../client/Client'
 import { PageParams } from '../core/searchParams'
 import { RetryError } from '../queue/Job'
 import { subscribeAll } from '../subscriptions/SubscriptionService'
-import { Device, DeviceParams, User, UserParams } from '../users/User'
+import { Device, DeviceParams, User, UserInternalParams } from '../users/User'
 import { uuid } from '../utilities'
 import { getRuleEventNames } from '../rules/RuleHelpers'
 import { UserEvent } from './UserEvent'
-import { createEvent } from './UserEventRepository'
+import { Context } from 'koa'
+import { EventPostJob } from '../jobs'
 
 export const getUser = async (id: number, projectId?: number): Promise<User | undefined> => {
     return await User.find(id, qb => {
@@ -16,6 +17,12 @@ export const getUser = async (id: number, projectId?: number): Promise<User | un
         }
         return qb
     })
+}
+
+export const getUserFromContext = async (ctx: Context): Promise<User | undefined> => {
+    return ctx.state.scope === 'secret'
+        ? await getUserFromClientId(ctx.state.project.id, { external_id: ctx.params.userId })
+        : await getUser(parseInt(ctx.params.userId), ctx.state.project.id)
 }
 
 export const getUsersFromIdentity = async (projectId: number, identity: ClientIdentity) => {
@@ -100,12 +107,13 @@ export const aliasUser = async (projectId: number, {
     return await User.updateAndFetch(previous.id, { external_id })
 }
 
-export const createUser = async (projectId: number, { external_id, anonymous_id, data, ...fields }: UserParams) => {
+export const createUser = async (projectId: number, { external_id, anonymous_id, data, created_at, ...fields }: UserInternalParams) => {
     const user = await User.insertAndFetch({
         project_id: projectId,
         anonymous_id: anonymous_id ?? uuid(),
         external_id,
         data: data ?? {},
+        created_at: created_at ? new Date(created_at) : new Date(),
         ...fields,
     })
 
@@ -113,10 +121,15 @@ export const createUser = async (projectId: number, { external_id, anonymous_id,
     await subscribeAll(user)
 
     // Create an event for the user creation
-    await createEvent(user, {
-        name: 'user_created',
-        data: { ...fields, data, external_id, anonymous_id },
-    })
+    await EventPostJob.from({
+        project_id: projectId,
+        event: {
+            name: 'user_created',
+            external_id: user.external_id,
+            anonymous_id,
+            data: { ...data, ...fields, external_id, anonymous_id },
+        },
+    }).queue()
 
     return user
 }
