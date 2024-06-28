@@ -1,38 +1,26 @@
 name: Create Tag
 
 on:
-    push:
-        branches:
-            - main
+  push:
+    branches:
+      - main
 
 jobs:
-    create-tag:
-        runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-latest
 
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v2
+    steps:
+      - uses: actions/checkout@v3
 
-            - name: Set up Git
-              run: |
-                  git config --global user.name "Suvojit Mondal"
-                  git config --global user.email "msuvojit@gmail.com"
+      - name: Get current tag version
+        run: |
+          TAG_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "0")
 
-            - name: Get latest tag
-              id: get_latest_tag
-              run: |
-                  latest_tag=$(git describe --abbrev=0 --tags)
-                  echo "::set-output name=latest_tag::$latest_tag"
+      - name: Increment tag version
+        run: |
+          TAG_VERSION=$((TAG_VERSION + 1))
 
-            - name: Create new tag
-              id: create_tag
-              run: |
-                  latest_tag=${{ steps.get_latest_tag.outputs.latest_tag }}
-                  new_tag=$(echo $latest_tag | awk -F. -v OFS=. '{$NF++;print}')
-                  git tag $new_tag
-                  echo "::set-output name=new_tag::$new_tag"
-
-            - name: Push new tag
-              run: |
-                  new_tag=${{ steps.create_tag.outputs.new_tag }}
-                  git push origin $new_tag
+      - name: Create tag
+        run: |
+          git tag -a v${TAG_VERSION} -m "New release"
+          git push origin v${TAG_VERSION}
