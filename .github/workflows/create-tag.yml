@@ -12,6 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Set up Git
+        run: |
+          git config --global user.name "Suvojit Mondal"
+          git config --global user.email "msuvojit@gmail.com"
+
       - name: Get current tag version
         run: |
           TAG_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "0")
