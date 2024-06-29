@@ -175,9 +175,8 @@ services:
       api:
         condition: service_healthy
     environment:
-      API_BASE_URL: ${API_BASE_URL}
-      DOCKER_USERNAME: ${GHCR_USERNAME}
-      DOCKER_PASSWORD: ${GHCR_TOKEN}
+      - SERVICE_FQDN_EMAILAPP_3000
+      - API_BASE_URL=${API_BASE_URL}
     ports:
       - ${UI_PORT}:3000
 volumes:
