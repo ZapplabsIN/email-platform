@@ -56,7 +56,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_COMPILED_MESSAGE: ${LOG_COMPILED_MESSAGE:-true}
       DB_CLIENT: ${DB_CLIENT}
-      DB_HOST: mysql
+      DB_HOST: ${DB_HOST}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_PORT: ${DB_PORT}
