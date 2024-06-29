@@ -1,0 +1,15 @@
+version: '3'
+services:
+  redis:
+    image: redis
+    expose:
+      - "6379"
+    ports:
+      - "${REDIS_PORT}:6379"
+    restart: always
+    volumes:
+      - redis_data:/data
+volumes:
+  redis_data:
+    driver: local
+    
