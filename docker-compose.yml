@@ -46,6 +46,8 @@ services:
       redis:
         condition: service_started
     environment:
+      DOCKER_USERNAME: ${GHCR_USERNAME}
+      DOCKER_PASSWORD: s${GHCR_TOKEN}
       NODE_ENV: ${NODE_ENV}
       BASE_URL: ${BASE_URL}
       RUNNER: 'api'
@@ -114,6 +116,8 @@ services:
       api:
         condition: service_healthy
     environment:
+      DOCKER_USERNAME: ${GHCR_USERNAME}
+      DOCKER_PASSWORD: ${GHCR_TOKEN}
       NODE_ENV: ${NODE_ENV}
       BASE_URL: ${BASE_URL}
       RUNNER: 'worker'
@@ -172,6 +176,8 @@ services:
         condition: service_healthy
     environment:
       API_BASE_URL: ${API_BASE_URL}
+      DOCKER_USERNAME: ${GHCR_USERNAME}
+      DOCKER_PASSWORD: ${GHCR_TOKEN}
     ports:
       - ${UI_PORT}:3000
 volumes:
