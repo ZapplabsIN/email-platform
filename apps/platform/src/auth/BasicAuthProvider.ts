@@ -30,17 +30,9 @@ export default class BasicAuthProvider extends AuthProvider {
 
     async validate(ctx: Context) {
 
-        console.log('BasicAuthProvider.ts: validate: ')
-
         const { email, password } = ctx.request.body
 
-        // Check email and password are provided
-        console.log('email: ' + email)
-        console.log('password ' + password)
-
         if (!email || !password) throw new RequestError(AuthError.MissingCredentials)
-
-        console.log('coming here...')
 
         // Check email and password match
         if (email !== this.config.email || password !== this.config.password) {

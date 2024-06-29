@@ -76,18 +76,7 @@ export const startAuth = async (ctx: Context): Promise<void> => {
 
 export const validateAuth = async (ctx: Context): Promise<void> => {
     const provider = await loadProvider(ctx)
-
-    // print the provider
-    console.log('Auth.ts: validateAuth: ')
-    console.log(provider)
-
-    const validationResult = await provider.validate(ctx)
-
-    // print the validationResult
-    console.log('Auth.ts: validateAuth: validationResult: ')
-    console.log(validationResult)
-
-    return validationResult
+    return await provider.validate(ctx)
 }
 
 const loadProvider = async (ctx: Context): Promise<AuthProvider> => {
