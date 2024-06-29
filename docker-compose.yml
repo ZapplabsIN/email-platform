@@ -175,7 +175,7 @@ services:
       api:
         condition: service_healthy
     environment:
-      - SERVICE_FQDN_EMAILAPP_3000
+      - SERVICE_FQDN_EMAILAPP_3002
       - API_BASE_URL=${API_BASE_URL}
     ports:
       - ${UI_PORT}:3000
